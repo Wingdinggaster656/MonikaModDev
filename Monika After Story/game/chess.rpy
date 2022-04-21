@@ -1,3 +1,7 @@
+define config.log = "chess_log.txt"
+define config.developer = True
+
+
 #We now will keep track of player wins/losses/draws/whatever
 default persistent._mas_chess_stats = {
     "wins": 0,
@@ -8,10 +12,17 @@ default persistent._mas_chess_stats = {
     "practice_draws": 0
 }
 
-#Stores the chess difficulty, this is managed via levels and sublevels
-#Key is the level (0-8) - corresponds to stockfish difficulty
-#Value is the sublevel (1-5) - corresponds to stockfish depth
-default persistent._mas_chess_difficulty = (0, 1)
+#Stores the chess difficulty.
+#The difficulty is actually the ELO Rating number.
+#For chess players, we have:
+#800 = Beginner
+#1200 = Beginner after a few days
+#1600 = Advancer
+#2000 = Master
+#2400 = Grandmaster
+#2800 = The current human limit
+#Here we limit Monika's ELO Rating in 1350~2500 the range.
+default persistent._mas_chess_elo = 1350
 
 # pgn as a string
 default persistent._mas_chess_quicksave = ""
@@ -43,6 +54,7 @@ init python in mas_chess:
     import store.mas_ui as mas_ui
     import store
     import random
+    import time
 
     # relative chess directory
     REL_DIR = "chess_games/"
@@ -215,38 +227,21 @@ init python in mas_chess:
 
     def _increment_chess_difficulty():
         """
-        Increments chess difficulty
+        Increments chess difficulty.
+        Monika's strength increases by 32 ELO points each time the player wins the game.
+        If player lose, Monika's strength drops by 40 ELO points.
+        This is because most MAS players are not chess pros.
         """
-        level, sublevel = store.persistent._mas_chess_difficulty
-
-        if sublevel == 5 and level < 9:
-            level += 1
-            sublevel = 1
-
-        elif sublevel < 5:
-            sublevel += 1
-
-        else:
-            return
-
-        store.persistent._mas_chess_difficulty = (level, sublevel)
+        store.persistent._mas_chess_elo = min(store.persistent._mas_chess_elo+32, 2500)
 
     def _decrement_chess_difficulty():
         """
-        Decrements chess difficulty
+        Decrements chess difficulty.
+        Monika's strength increases by 32 ELO points each time the player wins the game.
+        If player lose, Monika's strength drops by 40 ELO points.
+        This is because most MAS players are not chess pros.
         """
-        level, sublevel = store.persistent._mas_chess_difficulty
-        if sublevel == 1 and level > 0:
-            level -= 1
-            sublevel = 5
-
-        elif sublevel > 1:
-            sublevel -= 1
-
-        else:
-            return
-
-        store.persistent._mas_chess_difficulty = (level, sublevel)
+        store.persistent._mas_chess_elo = max(store.persistent._mas_chess_elo-40, 1350)
 
     def _get_player_color(loaded_game):
         """
@@ -951,7 +946,7 @@ label mas_chess_start_chess:
         quick_menu = True
 
         # unpack results
-        new_pgn_game, is_monika_winner, is_surrender, num_turns = results
+        new_pgn_game, is_monika_winner, is_resigned, num_turns = results
 
         # game result header
         game_result = new_pgn_game.headers["Result"]
@@ -961,9 +956,12 @@ label mas_chess_start_chess:
     # monika wins
     if is_monika_winner:
         $ persistent._mas_chess_stats["practice_losses" if practice_mode else "losses"] += 1
+        
+        # No matter the player is resigned or checkmated, the difficulty will drop.
+        $ mas_chess._decrement_chess_difficulty()
 
-        #Monika wins by player surrender
-        if is_surrender:
+        #Monika wins by player resigned
+        if is_resigned:
             if num_turns < 5:
                 m 1ekc "Don't give up so easily..."
                 m 1eka "I'm sure if you keep trying, you can beat me."
@@ -994,10 +992,6 @@ label mas_chess_start_chess:
             else:
                 call mas_chess_dlg_game_monika_wins_sometimes
                 m 1eua "Anyway..."
-
-        if not is_surrender:
-            #Monika plays a little easier if you didn't just surrender
-            $ mas_chess._decrement_chess_difficulty()
 
     #Always save in progress games unless they're over
     elif game_result == mas_chess.IS_ONGOING:
@@ -1078,8 +1072,8 @@ label mas_chess_start_chess:
         call mas_chess_savegame(silent=True)
         jump mas_chess_play_again_ask
 
-    #If the player surrendered under 5 moves in, we can assume they just don't want to play anymore
-    if is_surrender and num_turns < 5:
+    #If the player resigneded under 5 moves in, we can assume they just don't want to play anymore
+    if is_resigned and num_turns < 5:
         return
 
     #We only save a game if there's enough turns
@@ -1220,7 +1214,7 @@ label mas_chess_savegame(silent=False, allow_return=True):
 
             m 1esa "It's in a format called 'Portable Game Notation.'{w=0.2} {nw}"
             extend 1eua "You can find PGN analyzers online to open it and see where you made your mistakes."
-            m 3eub "Whether you win, lose, surrender, or draw, there's always something you could've done better, so loading these games up can really help you improve!"
+            m 3eub "Whether you win, lose, resigned, or draw, there's always something you could've done better, so loading these games up can really help you improve!"
 
             if game_result == mas_chess.IS_ONGOING:
                 m 1lksdlb "It's possible to edit this file and change the outcome of the game...{w=0.5} {nw}"
@@ -3127,8 +3121,15 @@ init python:
             self.starting_fen = starting_fen
             self.casual_rules = casual_rules
 
-            self.surrendered = False
+            self.resigneded = False
             self.practice_lost = False
+            
+            # self.evaluate is the game-situation-score list.
+            # We store 60 as the first element.
+            # Modern computer engines assume that in the initial position, since white is the first to move, it leads by about 0.6 pawn
+            # Note: We consider "Mate in X" as 99999.
+            self.evaluate = list()
+            self.evaluate.append(60)
 
             #Init the 4 buttons
             self._button_save = MASButtonDisplayable.create_stb(
@@ -3143,7 +3144,7 @@ init python:
             )
 
             self._button_giveup = MASButtonDisplayable.create_stb(
-                _("Surrender"),
+                _("Resign"),
                 True,
                 MASChessDisplayableBase.BUTTON_INDICATOR_X,
                 MASChessDisplayableBase.DRAWN_BUTTON_Y_MID,
@@ -3277,8 +3278,7 @@ init python:
             Starts Monika's analysis of the board
             """
             self.stockfish.stdin.write("position fen {0}\n".format(self.board.fen()))
-            self.stockfish.stdin.write("go depth {0}\n".format(persistent._mas_chess_difficulty[1]))
-            self.stockfish.stdin.write("go movetime {0}\n".format(self.MONIKA_WAITTIME))
+            self.stockfish.stdin.write("go movetime 100\n")
 
         def additional_setup(self):
             """
@@ -3378,7 +3378,9 @@ init python:
                 self.stockfish = open_stockfish(fp)
 
             #Set Monika's parameters
-            self.stockfish.stdin.write("setoption name Skill Level value {0}\n".format(persistent._mas_chess_difficulty[0]))
+            self.stockfish.stdin.write("uci\n")
+            self.stockfish.stdin.write("setoption name UCI_LimitStrength value true\n")
+            self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
             self.stockfish.stdin.write("setoption name Contempt value {0}\n".format(self.MONIKA_OPTIMISM))
             self.stockfish.stdin.write("setoption name Ponder value False\n")
 
@@ -3423,7 +3425,7 @@ init python:
                 elif self._button_giveup.event(ev, x, y, st):
                     wants_quit = renpy.call_in_new_context("mas_chess_confirm_context", prompt=_("Are you sure you want to give up?"))
                     if wants_quit:
-                        #User wishes to surrender
+                        #User wishes to resigned
                         self.quit_game = True
                         return self._quitPGN(1)
 
@@ -3474,6 +3476,42 @@ init python:
             self.set_button_states()
             return None
 
+        def position_evaluate(self):
+            """
+            This function evaluates the current board situation and stores the result in self.evaluate
+            """
+            # First we ask Stockfish to start the analyze
+            # Give Stockfish a certain depth might make game "not so smooth" on bad computers, so we use movetime
+            self.stockfish.stdin.write("setoption name UCI_Elo value 2850\n")
+            self.stockfish.stdin.write("position fen {0}\n".format(self.board.fen()))
+            self.stockfish.stdin.write("go movetime 130\n")
+            
+            # Even though we gave 130ms to stockfish, we should wait 150ms here.
+            # 130ms isn't a strict limitation, the exact time cost might be slightly more.
+            mas_chess.time.sleep(0.15)
+            
+            # Set the Skill Level back to normal, so we won't face Monika the Grandmaster
+            self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
+            
+            # Current problem:
+            # self.queue [-2] sometimes corresponds to the "bestmove xxxx ponder xxxx" line. This will cause crash.
+            # Not sure why.
+            with self.lock:
+                renpy.log("stdout:" + self.queue[-2])
+                match = re.search(r"(?<=score ).*(?= nodes)", self.queue[-2]).group(0)
+                renpy.log("match:" + match)
+                if "cp" in match:
+                    self.evaluate.append(int(match[3:]))
+                else:
+                    if "-" in match:
+                        # It's black going to checkmate:
+                        self.evaluate.append(-99999)
+                    else:
+                        # It's white going to checkmate:
+                        self.evaluate.append(99999)
+                renpy.log("evaluate:" + str(self.evaluate[-1]))
+                renpy.log("---------------------")
+            
         def handle_player_move(self):
             """
             Manages player move
@@ -3509,6 +3547,7 @@ init python:
             if chess.Move.from_uci(move_str) in self.possible_moves:
                 self.__push_move(move_str)
                 self.set_button_states()
+                self.position_evaluate()
 
                 #Setup Monika's go
                 if not self.is_game_over:
@@ -3528,14 +3567,17 @@ init python:
                     monika_move_check = chess.Move.from_uci(monika_move)
 
                     if self.board.is_legal(monika_move_check):
-                        #Monika is thonking
-                        renpy.pause(1.5)
+                        #Monika is thinking
+                        renpy.pause(renpy.random.random()+1)
 
                         #Push her move
                         self.__push_move(monika_move)
 
                         #Set the buttons
                         self.set_button_states()
+                        
+                        #Analyze the game
+                        self.position_evaluate()
 
         def set_button_states(self):
             """
@@ -3594,11 +3636,11 @@ init python:
             IN:
                 quit_reason - reason the game was quit
                     0 - Normal savegame/victor found
-                    1 - Player surrendered
+                    1 - Player resigneded
                     2 - Player requested draw
                     (Default: 0)
 
-                giveup - True if the player surrendered, False otherwise
+                giveup - True if the player resigneded, False otherwise
                 requested_draw - whether or not the player requested a draw
 
             RETURNS: tuple of the following format:
@@ -3660,6 +3702,71 @@ init python:
                         and self.is_player_white #Player is white, so monika is black
                     )
                 ),
-                quit_reason == 1, #Did player surrender?
+                quit_reason == 1, #Did player resigned?
                 self.board.fullmove_number
             )
+
+        def monika_reaction(self):
+            """
+            Present a reaction to the current situation.
+            """
+            elo = store.persistent._mas_chess_elo
+            expression = ""
+            
+            if elo > 2200 :
+                # Monika is basically giving her best
+                expresiion = "0"
+            elif elo > 1800:
+                # Monika is taking this as a matter
+                expression = "2lsa"
+            else:
+                # Monika was hardly thinking
+                expression = "0"
+        
+        def game_loop(self):
+            """
+            Runs the game loop
+            """
+            renpy.watch("persistent._mas_chess_elo")
+            while not self.quit_game:
+                # Monika turn actions
+                if not self.is_player_turn() and not self.is_game_over:
+                    renpy.show("monika 1dsc")
+                    renpy.say(
+                        m,
+                        renpy.random.choice(
+                            self.monika_move_quips["check"] if self.board.is_check() else self.monika_move_quips["generic"]
+                        ),
+                        False
+                    )
+                    store._history_list.pop()
+                    self.handle_monika_move()
+
+                # prepare a quip before the player turn loop
+                should_update_quip = False
+                quip = renpy.random.choice(
+                    self.player_move_prompts["check"] if self.board.is_check() else self.player_move_prompts["generic"]
+                )
+
+                # player turn actions
+                # 'is_game_over' is to allow interaction at the end of the game
+                while self.is_player_turn() or self.is_game_over:
+                    # we always reshow Monika here
+                    renpy.show("monika 1eua")
+                    if not self.is_game_over:
+                        if (
+                            should_update_quip
+                            and "{fast}" not in quip
+                        ):
+                            quip = quip + "{fast}"
+
+                        should_update_quip = True
+                        renpy.say(m, quip, False)
+                        store._history_list.pop()
+
+                    # interactions are handled in the event method
+                    interaction = ui.interact(type="minigame")
+                    # Check if the palyer wants to quit the game
+                    if self.quit_game:
+                        return interaction
+            return None
