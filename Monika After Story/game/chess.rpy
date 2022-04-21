@@ -1,3 +1,4 @@
+#TODO:Apply the new difficulty setting to Randomzied Chess
 define config.log = "chess_log.txt"
 define config.developer = True
 
@@ -1875,7 +1876,7 @@ init python:
         #Put the static vars up here
         MONIKA_WAITTIME = 50
         # MONIKA_DEPTH = 1
-        MONIKA_OPTIMISM = 33
+        MONIKA_OPTIMISM = 10
         # MONIKA_THREADS = 1
 
         START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -3382,7 +3383,6 @@ init python:
             self.stockfish.stdin.write("setoption name UCI_LimitStrength value true\n")
             self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
             self.stockfish.stdin.write("setoption name Contempt value {0}\n".format(self.MONIKA_OPTIMISM))
-            self.stockfish.stdin.write("setoption name Ponder value False\n")
 
             #And set up facilities for asynchronous communication
             self.queue = collections.deque()
@@ -3497,7 +3497,7 @@ init python:
             # self.queue [-2] sometimes corresponds to the "bestmove xxxx ponder xxxx" line. This will cause crash.
             # Not sure why.
             with self.lock:
-                renpy.log("stdout:" + self.queue[-2])
+                renpy.log(r"stdout:" + self.stockfish.communicate()[0])
                 match = re.search(r"(?<=score ).*(?= nodes)", self.queue[-2]).group(0)
                 renpy.log("match:" + match)
                 if "cp" in match:
@@ -3547,7 +3547,6 @@ init python:
             if chess.Move.from_uci(move_str) in self.possible_moves:
                 self.__push_move(move_str)
                 self.set_button_states()
-                self.position_evaluate()
 
                 #Setup Monika's go
                 if not self.is_game_over:
@@ -3567,17 +3566,11 @@ init python:
                     monika_move_check = chess.Move.from_uci(monika_move)
 
                     if self.board.is_legal(monika_move_check):
-                        #Monika is thinking
-                        renpy.pause(renpy.random.random()+1)
-
                         #Push her move
                         self.__push_move(monika_move)
 
                         #Set the buttons
                         self.set_button_states()
-                        
-                        #Analyze the game
-                        self.position_evaluate()
 
         def set_button_states(self):
             """
@@ -3710,9 +3703,34 @@ init python:
             """
             Present a reaction to the current situation.
             """
-            elo = store.persistent._mas_chess_elo
-            expression = ""
             
+            elo = store.persistent._mas_chess_elo
+            evaluate_changed = self.evalute[-1] - self.evalute[-2]
+            
+            played_brilliant = (evaluate_changed > 100)
+            played_best = (evaluated_changed > 0)
+            played_good = (evaluated_changed < -30)
+            played_normal = (evaluate_changed < -50)
+            played_inaccruate = (evaluate_changed < -100)
+            played_mistake = (evaluate_changed < -200)
+            played_blunder = (evaluate_changed < -400)
+            played_missedwin = (evaluate_changed < -800)
+            player_better_now = (evaluate[-1] > 0)
+            player_better_before = (evaluate[-2] > 0)
+            if not self.is_player_white:
+                # All of the variable assignments above assume that "the player is white". 
+                # And if the player is actually not the white, then we reverse these bool values.
+                played_brilliant = not played_brilliant
+                played_best = not played_best
+                played_good = not played_good
+                played_normal = not played_normal
+                played_inaccruate = not played_inaccruate
+                played_mistake = not played_mistake
+                played_blunder = not played_blunder
+                played_missedwin = not played_missedwin
+                player_better_now = not played_better_now
+                player_better_before = not played_better_before
+                
             if elo > 2200 :
                 # Monika is basically giving her best
                 expresiion = "0"
@@ -3720,9 +3738,39 @@ init python:
                 # Monika is taking this as a matter
                 expression = "2lsa"
             else:
-                # Monika was hardly thinking
-                expression = "0"
-        
+                # Monika was hardly thinking:
+                # Basic guidelines: 
+                # In this ELO range, Monika will not say anything about a player's wrong move, but she will have a slight expression on her face.
+                # And if player played a good move, then she will be happy about it.
+                if played_missedwin or played_blunder:
+                    random_case = renpy.random.randint(1,3)
+                    if random_case is 1:
+                        renpy.show("monika 1rsc")
+                        renpy.say(m,".{w=0.1}.{w=0.1}.{w=0.1}.{nw}",False)
+                        renpy.show("monika 1esd")
+                        renpy.say(m,"Well, [player]. What if I play this move to you?{w=0.2}{nw}",False)
+                    elif random_case is 2:
+                        renpy.show("1esb")
+                        renpy.say(m, "Concentrate on, [player].", False)
+                    else:
+                        renpy.show(renpy.random.choice("monika 1ltc", "monika 1euc"))
+                        renpy.say(m, "Hmmm...{w=0.3}{nw}", False)
+                elif played_mistake:
+                    if renpy.random.randint(1,2) is 1:
+                        renpy.show()
+                        renpy.say()
+                        
+                elif played_inaccruate or played_normal:
+                    renpy.show("monika 1lua")
+                    renpy.say(m,".{w=0.1}.{w=0.1}.{w=0.1}{nw}",False)
+                    handle_monika_move()
+                    renpy.show("monika 1eub")
+                    renpy.say(m,"This!",False)
+                
+                renpy.show("monika 1eua")
+                    
+            self.handle_monika_move()
+                
         def game_loop(self):
             """
             Runs the game loop
@@ -3730,26 +3778,12 @@ init python:
             renpy.watch("persistent._mas_chess_elo")
             while not self.quit_game:
                 # Monika turn actions
-                if not self.is_player_turn() and not self.is_game_over:
-                    renpy.show("monika 1dsc")
-                    renpy.say(
-                        m,
-                        renpy.random.choice(
-                            self.monika_move_quips["check"] if self.board.is_check() else self.monika_move_quips["generic"]
-                        ),
-                        False
-                    )
-                    store._history_list.pop()
-                    self.handle_monika_move()
-
-                # prepare a quip before the player turn loop
-                should_update_quip = False
-                quip = renpy.random.choice(
-                    self.player_move_prompts["check"] if self.board.is_check() else self.player_move_prompts["generic"]
-                )
+                self.position_evaluate()
+                self.monika_reaction()
 
                 # player turn actions
                 # 'is_game_over' is to allow interaction at the end of the game
+                self.position_evaluate()
                 while self.is_player_turn() or self.is_game_over:
                     # we always reshow Monika here
                     renpy.show("monika 1eua")
