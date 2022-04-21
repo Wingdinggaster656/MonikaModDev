@@ -1073,7 +1073,7 @@ label mas_chess_start_chess:
         call mas_chess_savegame(silent=True)
         jump mas_chess_play_again_ask
 
-    #If the player resigneded under 5 moves in, we can assume they just don't want to play anymore
+    #If the player resigned under 5 moves in, we can assume they just don't want to play anymore
     if is_resigned and num_turns < 5:
         return
 
@@ -1876,7 +1876,6 @@ init python:
         #Put the static vars up here
         MONIKA_WAITTIME = 50
         # MONIKA_DEPTH = 1
-        MONIKA_OPTIMISM = 10
         # MONIKA_THREADS = 1
 
         START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -3117,20 +3116,21 @@ init python:
             practice_mode=False,
             casual_rules=False
         ):
-
+            renpy.watch("chess_displayable_obj.queue")
+            
             self.practice_mode = practice_mode
             self.starting_fen = starting_fen
             self.casual_rules = casual_rules
 
-            self.resigneded = False
+            self.resigned = False
             self.practice_lost = False
             
-            # self.evaluate is the game-situation-score list.
-            # We store 60 as the first element.
-            # Modern computer engines assume that in the initial position, since white is the first to move, it leads by about 0.6 pawn
+            # self.evaluate[] is the game-situation-score list.
+            # We store 0.2 as the first element.
+            # Modern computer engines assume that in the initial position, since white is the first to move, it leads by about 0.2 pawn
             # Note: We consider "Mate in X" as 99999.
             self.evaluate = list()
-            self.evaluate.append(60)
+            self.evaluate.append(0.2)
 
             #Init the 4 buttons
             self._button_save = MASButtonDisplayable.create_stb(
@@ -3367,13 +3367,15 @@ init python:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
+                # Currently, Stockfish 15 doesn't seem to support 32 bit OS, so we have to provide Stockfish 14 for 32 bit player.
+                # TODO: Replace Stockfish 14 after Stockfish 15 is available
                 self.stockfish = open_stockfish(
-                    'mod_assets/games/chess/stockfish_8_windows_x{0}.exe'.format("64" if is_64_bit else "32"),
+                    'mod_assets/games/chess/stockfish_{0}.exe'.format("15_x64_avx2" if is_64_bit else "14_32bit"),
                     startupinfo
                 )
 
             elif is_64_bit:
-                fp = "mod_assets/games/chess/stockfish_8_{0}_x64".format("linux" if renpy.linux else "macosx")
+                fp = "mod_assets/games/chess/stockfish_15_{0}_x64".format("linux" if renpy.linux else "macosx")
 
                 os.chmod(config.basedir + "/game/".format(fp), 0755)
                 self.stockfish = open_stockfish(fp)
@@ -3382,7 +3384,6 @@ init python:
             self.stockfish.stdin.write("uci\n")
             self.stockfish.stdin.write("setoption name UCI_LimitStrength value true\n")
             self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
-            self.stockfish.stdin.write("setoption name Contempt value {0}\n".format(self.MONIKA_OPTIMISM))
 
             #And set up facilities for asynchronous communication
             self.queue = collections.deque()
@@ -3480,37 +3481,32 @@ init python:
             """
             This function evaluates the current board situation and stores the result in self.evaluate
             """
-            # First we ask Stockfish to start the analyze
-            # Give Stockfish a certain depth might make game "not so smooth" on bad computers, so we use movetime
-            self.stockfish.stdin.write("setoption name UCI_Elo value 2850\n")
-            self.stockfish.stdin.write("position fen {0}\n".format(self.board.fen()))
-            self.stockfish.stdin.write("go movetime 130\n")
             
-            # Even though we gave 130ms to stockfish, we should wait 150ms here.
-            # 130ms isn't a strict limitation, the exact time cost might be slightly more.
-            mas_chess.time.sleep(0.15)
+            """
+            Disclaimer: I fully admit that I know almost nothing about Python's subprocess module or threading module,
+            so the following code was written with no consider about performance,
+            just to achieve the desired effect so that I could test what I was doing next.
             
-            # Set the Skill Level back to normal, so we won't face Monika the Grandmaster
-            self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
+            Please teach me a better way.
+            """
             
-            # Current problem:
-            # self.queue [-2] sometimes corresponds to the "bestmove xxxx ponder xxxx" line. This will cause crash.
-            # Not sure why.
-            with self.lock:
-                renpy.log(r"stdout:" + self.stockfish.communicate()[0])
-                match = re.search(r"(?<=score ).*(?= nodes)", self.queue[-2]).group(0)
-                renpy.log("match:" + match)
-                if "cp" in match:
-                    self.evaluate.append(int(match[3:]))
-                else:
-                    if "-" in match:
-                        # It's black going to checkmate:
-                        self.evaluate.append(-99999)
-                    else:
-                        # It's white going to checkmate:
-                        self.evaluate.append(99999)
-                renpy.log("evaluate:" + str(self.evaluate[-1]))
-                renpy.log("---------------------")
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW 
+            analyze = subprocess.Popen(
+                        os.path.join(renpy.config.gamedir, 'mod_assets/games/chess/stockfish_15_x64_avx2.exe').replace('\\', '/'),
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        startupinfo=startupinfo
+                    )
+            analyze.stdin.write("position fen {0}\n".format(self.board.fen()))
+            analyze.stdin.write("eval\n")
+            
+            line = analyze.communicate()[0]
+            
+            match = re.search("(?<=Final evaluation       ).*(?= \(white side\))", line).group(0)
+            self.evaluate.append(float(match))
+            
+            analyze.stdin.close()
             
         def handle_player_move(self):
             """
@@ -3629,11 +3625,11 @@ init python:
             IN:
                 quit_reason - reason the game was quit
                     0 - Normal savegame/victor found
-                    1 - Player resigneded
+                    1 - Player resigned
                     2 - Player requested draw
                     (Default: 0)
 
-                giveup - True if the player resigneded, False otherwise
+                giveup - True if the player resigned, False otherwise
                 requested_draw - whether or not the player requested a draw
 
             RETURNS: tuple of the following format:
@@ -3705,18 +3701,18 @@ init python:
             """
             
             elo = store.persistent._mas_chess_elo
-            evaluate_changed = self.evalute[-1] - self.evalute[-2]
+            evaluate_changed = self.evaluate[-1] - self.evaluate[-2]
             
-            played_brilliant = (evaluate_changed > 100)
-            played_best = (evaluated_changed > 0)
-            played_good = (evaluated_changed < -30)
-            played_normal = (evaluate_changed < -50)
-            played_inaccruate = (evaluate_changed < -100)
-            played_mistake = (evaluate_changed < -200)
-            played_blunder = (evaluate_changed < -400)
-            played_missedwin = (evaluate_changed < -800)
-            player_better_now = (evaluate[-1] > 0)
-            player_better_before = (evaluate[-2] > 0)
+            played_brilliant = (evaluate_changed > 1)
+            played_best = (evaluate_changed > 0)
+            played_good = (evaluate_changed < -0.3)
+            played_normal = (evaluate_changed < -0.5)
+            played_inaccruate = (evaluate_changed < -1)
+            played_mistake = (evaluate_changed < -2)
+            played_blunder = (evaluate_changed < -4)
+            played_missedwin = (evaluate_changed < -8)
+            player_better_now = (self.evaluate[-1] >= 0)
+            player_better_before = (self.evaluate[-2] >= 0)
             if not self.is_player_white:
                 # All of the variable assignments above assume that "the player is white". 
                 # And if the player is actually not the white, then we reverse these bool values.
@@ -3728,15 +3724,15 @@ init python:
                 played_mistake = not played_mistake
                 played_blunder = not played_blunder
                 played_missedwin = not played_missedwin
-                player_better_now = not played_better_now
-                player_better_before = not played_better_before
+                player_better_now = not player_better_now
+                player_better_before = not player_better_before
                 
             if elo > 2200 :
                 # Monika is basically giving her best
                 expresiion = "0"
             elif elo > 1800:
                 # Monika is taking this as a matter
-                expression = "2lsa"
+                expression = "0"
             else:
                 # Monika was hardly thinking:
                 # Basic guidelines: 
@@ -3753,12 +3749,12 @@ init python:
                         renpy.show("1esb")
                         renpy.say(m, "Concentrate on, [player].", False)
                     else:
-                        renpy.show(renpy.random.choice("monika 1ltc", "monika 1euc"))
+                        #renpy.show(renpy.random.choice("monika 1ltc", "monika 1euc"))
                         renpy.say(m, "Hmmm...{w=0.3}{nw}", False)
                 elif played_mistake:
                     if renpy.random.randint(1,2) is 1:
-                        renpy.show()
-                        renpy.say()
+                        renpy.show("")
+                        renpy.say(m,"WAITING",False)
                         
                 elif played_inaccruate or played_normal:
                     renpy.show("monika 1lua")
@@ -3787,20 +3783,11 @@ init python:
                 while self.is_player_turn() or self.is_game_over:
                     # we always reshow Monika here
                     renpy.show("monika 1eua")
-                    if not self.is_game_over:
-                        if (
-                            should_update_quip
-                            and "{fast}" not in quip
-                        ):
-                            quip = quip + "{fast}"
-
-                        should_update_quip = True
-                        renpy.say(m, quip, False)
-                        store._history_list.pop()
 
                     # interactions are handled in the event method
                     interaction = ui.interact(type="minigame")
                     # Check if the palyer wants to quit the game
                     if self.quit_game:
                         return interaction
+            renpy.unwatch("persistent._mas_chess_elo")
             return None
