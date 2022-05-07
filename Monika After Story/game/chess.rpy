@@ -1,8 +1,3 @@
-#TODO:Apply the new difficulty setting to Randomzied Chess
-define config.log = "chess_log.txt"
-define config.developer = True
-
-
 #We now will keep track of player wins/losses/draws/whatever
 default persistent._mas_chess_stats = {
     "wins": 0,
@@ -15,15 +10,19 @@ default persistent._mas_chess_stats = {
 
 #Stores the chess difficulty.
 #The difficulty is actually the ELO Rating number.
-#For chess players, we have:
+#The chess community generally believes that:
 #800 = Beginner
 #1200 = Beginner after a few days
-#1600 = Advancer
+#1700 = Advancer
 #2000 = Master
 #2400 = Grandmaster
-#2800 = The current human limit
+#2900 = Probably the human limit
 #Here we limit Monika's ELO Rating in 1350~2500 the range.
+#(The minimum ELO score Stockfish allows is 1350, otherwise we would have put it around 850)
 default persistent._mas_chess_elo = 1350
+define _mas_chess_player_is_beginner = (persistent._mas_chess_elo < 1700)
+define _mas_chess_player_is_advancer = (persistent._mas_chess_elo >= 1700 and persistent._mas_chess_elo < 2100)
+define _mas_chess_player_is_master = (persistent._mas_chess_elo >= 2100)
 
 # pgn as a string
 default persistent._mas_chess_quicksave = ""
@@ -42,6 +41,12 @@ default persistent._mas_chess_mangle_all = False
 
 # skip file checks
 default persistent._mas_chess_skip_file_checks = False
+
+# Does the player want a quiet game?
+default persistent._mas_chess_quiet = False
+
+# Did the player unlock the serious game?
+default persistent._mas_chess_finalboss = False
 
 define mas_chess.CHESS_SAVE_PATH = "/chess_games/"
 define mas_chess.CHESS_SAVE_EXT = ".pgn"
@@ -226,23 +231,35 @@ init python in mas_chess:
 
         return _checkInProgressGame(pgn_game, mth)
 
-    def _increment_chess_difficulty():
+    def _increment_chess_difficulty(modifier = 1):
         """
         Increments chess difficulty.
         Monika's strength increases by 32 ELO points each time the player wins the game.
         If player lose, Monika's strength drops by 40 ELO points.
         This is because most MAS players are not chess pros.
+        
+        IN:
+            modifier - The multiplication of the increase or decrease in ELO points.
+                       For a feature that possbily will be implemented in the future 
+                    to give extra multipliers based on player performance in a game.
+                    (Default: 1)
         """
-        store.persistent._mas_chess_elo = min(store.persistent._mas_chess_elo+32, 2500)
+        store.persistent._mas_chess_elo = min(store.persistent._mas_chess_elo + 32*modifier, 2500)
 
-    def _decrement_chess_difficulty():
+    def _decrement_chess_difficulty(modifier = 1):
         """
         Decrements chess difficulty.
         Monika's strength increases by 32 ELO points each time the player wins the game.
         If player lose, Monika's strength drops by 40 ELO points.
         This is because most MAS players are not chess pros.
+        
+        IN:
+            modifier - The multiplication of the increase or decrease in ELO points.
+                       For a feature that possbily will be implemented in the future 
+                    to give extra multipliers based on player performance in a game.
+                    (Default: 1)
         """
-        store.persistent._mas_chess_elo = max(store.persistent._mas_chess_elo-40, 1350)
+        store.persistent._mas_chess_elo = max(store.persistent._mas_chess_elo - 40*modifier, 1350)
 
     def _get_player_color(loaded_game):
         """
@@ -469,8 +486,8 @@ init python in mas_chess:
         IN:
             is_player_white - whether or not the player is playing white this game
         """
-        # We need to multiply by 6 (max subvalue is 5) to get correct difficulty from value and subvalue
-        difficulty = store.persistent._mas_chess_difficulty[0] * 6 + store.persistent._mas_chess_difficulty[1]
+        # Use a lerp relation to reflect ELO Points
+        difficulty = (store.persistent._mas_chess_elo / 2500) * 53
         # Use a cubic function to adjust players' points
         p_value_adj = int(round(-((float(difficulty) - 27)**3) / 984))
         m_value_adj = -p_value_adj
@@ -535,6 +552,35 @@ init python in mas_chess:
 
         out.close()
 
+    def generate_game_type(evaluation_list):
+        """
+        Generates the game type.
+        We have these types:
+        
+        Duel - Both players played pretty good, no blunder or mistake occured. But one of them was better than the other.
+               This usually only happens between games between two highly skilled players.
+               The criterion is that neither side played a mistake or worse. And both of them must have an Accuracy Point higher than 90.
+               
+        Mad - The progression is really wild. Both have played blunders and both have had their chance to win.
+              The criterion is if both player have played at least one blunder.
+        
+        Slip - A player has an advantage, but they let it slips away by mistake.
+               The criterion is that at least one move is considered as "missed win".
+        
+        Slaughter - One player almost steamrolls the other. The difference in their strength is very wide.
+                    The criterion is one player's Accuracy Point is at least 20 points higher than another.
+        
+        Other - Games that do not meet any of these criteria will be classified in this category.
+                We are very likely to add more types in the future.
+        
+
+        IN:
+            evaluation_list - A list of evaluation values for this game. That's how we judge the type.
+            
+        OUT:
+            String - The exact content depends on the game type.
+        """
+        return
 #START: Main game label
 label game_chess:
     #NOTE: This is a failsafe in case people jump to this label
@@ -848,7 +894,7 @@ label mas_chess_remenu:
                 ]
             }
         }
-
+        
     show monika 1eua at t21
 
     $ menu_options = menu_contents[menu_category]["options"]
@@ -920,6 +966,7 @@ label mas_chess_remenu:
 label mas_chess_start_chess:
     #Setup the chess FEN
     $ starting_fen = mas_chess.generate_fen(is_player_white) if do_really_bad_chess else None
+    $ renpy.watch("persistent._mas_chess_elo")
 
     #NOTE: This is a failsafe in case people jump to the mas_chess_start_chess label
     if persistent._mas_chess_timed_disable is not None:
@@ -947,10 +994,15 @@ label mas_chess_start_chess:
         quick_menu = True
 
         # unpack results
-        new_pgn_game, is_monika_winner, is_resigned, num_turns = results
+        new_pgn_game = results[0]
+        is_monika_winner = results[1]
+        is_resigned = results[2]
+        num_turns = results[3]
+        evaluation_list = results[3:]
 
         # game result header
         game_result = new_pgn_game.headers["Result"]
+        renpy.unwatch("persistent._mas_chess_elo")
 
     show monika at t11
     $ mas_gainAffection(modifier=0.5)
@@ -964,12 +1016,25 @@ label mas_chess_start_chess:
         #Monika wins by player resigned
         if is_resigned:
             if num_turns < 5:
-                m 1ekc "Don't give up so easily..."
-                m 1eka "I'm sure if you keep trying, you can beat me."
-                m 1ekc "..."
-                m 1eka "I hope you don't get frustrated when you play with me."
-                m 3ekb "It really means a lot to me that you keep playing if you do~"
-                m 3hua "Let's play again soon, alright?"
+                if _mas_chess_player_is_beginner:
+                    m 1ekc "Don't give up so easily..."
+                    m 1eka "I'm sure if you keep trying, you can beat me."
+                    m 1ekc "..."
+                    m 1eka "I hope you don't get frustrated when you play with me."
+                    m 3ekb "It really means a lot to me that you keep playing if you do~"
+                    m 3hua "Let's play again soon, alright?"
+                else:
+                    $ opening_bad = (evaluation_list[-1] < -1)
+                    m 1etd "Giving up in opening phase, [player]?"
+                    if opening_bad:
+                        m 1etc "Did I give you an unfamiliar opening?"
+                        m 1eua "I personally don't think we should resign when we meet a new opening. After all, there is no escape in standard match."
+                        m 1hua "And every time you learn a new opening, you learn a new chess vision."
+                        m 3hub "But since you say so, it doesn't matter. Game over!"
+                    else:
+                        m 1etd "It doesn't seems like you played a blunder..."
+                        m 1hksdrb "Well, maybe you don't like the opening I delivered to you?"
+                        m 1hksdra "If that's the case, sorry for that!"
 
             else:
                 m 1ekc "Giving up, [player]?"
@@ -1073,8 +1138,8 @@ label mas_chess_start_chess:
         call mas_chess_savegame(silent=True)
         jump mas_chess_play_again_ask
 
-    #If the player resigned under 5 moves in, we can assume they just don't want to play anymore
-    if is_resigned and num_turns < 5:
+    #If the player resigned under 5 moves in, and they are a beginner, we can assume they just don't want to play anymore
+    if is_resigned and num_turns < 5 and _mas_chess_player_is_beginner:
         return
 
     #We only save a game if there's enough turns
@@ -1264,7 +1329,7 @@ label mas_chess_dlg_game_monika_wins_sometimes:
     m 3hua "I bet if you keep practicing, you'll be even better than me someday!"
 
     #If the difficulty is above base level, we'll mention lowering it
-    if persistent._mas_chess_difficulty != (0, 1):
+    if persistent._mas_chess_elo != 1350:
         m 3eua "Until then though, I'll try and go a little easier on you."
     return
 
@@ -3115,9 +3180,7 @@ init python:
             starting_fen=None,
             practice_mode=False,
             casual_rules=False
-        ):
-            renpy.watch("chess_displayable_obj.queue")
-            
+        ):           
             self.practice_mode = practice_mode
             self.starting_fen = starting_fen
             self.casual_rules = casual_rules
@@ -3131,7 +3194,11 @@ init python:
             # Note: We consider "Mate in X" as 99999.
             self.evaluate = list()
             self.evaluate.append(0.2)
-
+            
+            # If we have the ability in the future to add Monika
+            # to change the thinking time as the situation changes, we'll use this:
+            self.think_time_extra = 0
+            
             #Init the 4 buttons
             self._button_save = MASButtonDisplayable.create_stb(
                 _("Save"),
@@ -3279,7 +3346,7 @@ init python:
             Starts Monika's analysis of the board
             """
             self.stockfish.stdin.write("position fen {0}\n".format(self.board.fen()))
-            self.stockfish.stdin.write("go movetime 100\n")
+            self.stockfish.stdin.write("go movetime 500\n")
 
         def additional_setup(self):
             """
@@ -3487,26 +3554,37 @@ init python:
             so the following code was written with no consider about performance,
             just to achieve the desired effect so that I could test what I was doing next.
             
-            Please teach me a better way.
+            Please show me the better way.
             """
             
             startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW 
-            analyze = subprocess.Popen(
-                        os.path.join(renpy.config.gamedir, 'mod_assets/games/chess/stockfish_15_x64_avx2.exe').replace('\\', '/'),
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        startupinfo=startupinfo
-                    )
-            analyze.stdin.write("position fen {0}\n".format(self.board.fen()))
-            analyze.stdin.write("eval\n")
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            engine = subprocess.Popen(
+                os.path.join(renpy.config.gamedir, 'mod_assets/games/chess/stockfish_14_32bit.exe').replace('\\', '/'),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                startupinfo=startupinfo
+            )
+            engine.stdin.write("uci\n")
+            engine.stdin.write("position fen {0}\n".format(self.board.fen()))
+            engine.stdin.write("eval\n")
             
-            line = analyze.communicate()[0]
+            # NOTE: Use "eval" the command is only for my test.
+            # In real game, we should use "go movetime xxx".
+            # The problem of "eval" is that "eval" can not work when a player is in check.    
             
-            match = re.search("(?<=Final evaluation       ).*(?= \(white side\))", line).group(0)
+            line = engine.communicate()[0]
+            
+            # This is for "go movetime xxx":
+            # match = re.findall("(?<=score ).*(?= nodes)", line)[-1]
+            match = re.findall("(?<=Classical evaluation   ).*(?= \(white side\))", line)[0]
             self.evaluate.append(float(match))
             
-            analyze.stdin.close()
+            engine.terminate()
+            
+            renpy.log("---------------")
+            renpy.log("evaluate just calculated:" + str(self.evaluate[-1]))
+            renpy.log("---------------")
             
         def handle_player_move(self):
             """
@@ -3542,6 +3620,7 @@ init python:
 
             if chess.Move.from_uci(move_str) in self.possible_moves:
                 self.__push_move(move_str)
+                #self.position_evaluate()
                 self.set_button_states()
 
                 #Setup Monika's go
@@ -3564,6 +3643,9 @@ init python:
                     if self.board.is_legal(monika_move_check):
                         #Push her move
                         self.__push_move(monika_move)
+                        
+                        #Analyze the game
+                        #self.position_evaluate()
 
                         #Set the buttons
                         self.set_button_states()
@@ -3695,99 +3777,193 @@ init python:
                 self.board.fullmove_number
             )
 
-        def monika_reaction(self):
+        def player_is_better(self):
             """
-            Present a reaction to the current situation.
+            This function returns a Boolean value to know if player is better now.
+                        
+            OUT:
+                Boolean - True if player is better, False if player is worse.
             """
+            return (self.evaluate[-1] >= 0) if self.is_player_white else (self.evaluate[-1] <= 0)
+
+        def monika_reaction_to_player_move(self):
+            """
+            Present a Monika reaction to the move player just played.
+            """
+            if not self.is_player_white and self.num_turns is 0:
+                return
             
-            elo = store.persistent._mas_chess_elo
-            evaluate_changed = self.evaluate[-1] - self.evaluate[-2]
-            
-            played_brilliant = (evaluate_changed > 1)
-            played_best = (evaluate_changed > 0)
-            played_good = (evaluate_changed < -0.3)
-            played_normal = (evaluate_changed < -0.5)
-            played_inaccruate = (evaluate_changed < -1)
-            played_mistake = (evaluate_changed < -2)
-            played_blunder = (evaluate_changed < -4)
-            played_missedwin = (evaluate_changed < -8)
-            player_better_now = (self.evaluate[-1] >= 0)
-            player_better_before = (self.evaluate[-2] >= 0)
-            if not self.is_player_white:
-                # All of the variable assignments above assume that "the player is white". 
-                # And if the player is actually not the white, then we reverse these bool values.
-                played_brilliant = not played_brilliant
-                played_best = not played_best
-                played_good = not played_good
-                played_normal = not played_normal
-                played_inaccruate = not played_inaccruate
-                played_mistake = not played_mistake
-                played_blunder = not played_blunder
-                played_missedwin = not played_missedwin
-                player_better_now = not player_better_now
-                player_better_before = not player_better_before
+            # If player want a quiet game, then we give them a quiet game.
+            # Since when facing a master player Monika is already silent, so we didn't need to deal with it.
+            if persistent._mas_chess_quiet and not _mas_chess_player_is_master:
+                quip = renpy.random.choice([
+                    "[mas_quipExp('2dua')].{w=0.1}.{w=0.1}.{w=0.1}",
+                    "[mas_quipExp('2lua')].{w=0.1}.{w=0.1}.{w=0.1}",
+                    "[mas_quipExp('1dua')].{w=0.1}.{w=0.1}.{w=0.1}",
+                    "[mas_quipExp('1lua')].{w=0.1}.{w=0.1}.{w=0.1}"
+                ])
+                renpy.say(m, quip, False)
                 
-            if elo > 2200 :
-                # Monika is basically giving her best
-                expresiion = "0"
-            elif elo > 1800:
-                # Monika is taking this as a matter
+                # Use return to end this function
+                return
+            
+            changed_player = self.evaluate[-1] - self.evaluate[-2]
+            quip = ""
+
+            # The process of deciding to give brilliant is very complicated. This is just a simplification.
+            if self.is_player_white:
+                player_brilliant = (changed_player > 1.0)#(1.0,infinity)
+                player_best = (changed_player <= 1.0 and changed_player >= -0.1)#[-0.1,1.0]
+                player_good = (changed_player < -0.1 and changed_player >= -0.3)#[-0.3,-0.1)
+                player_normal = (changed_player < -0.3 and changed_player >= -0.5)#[-0.5,-0.3)
+                player_inaccurate = (changed_player < -0.5 and changed_player >= -1.0)#[-1.0,-0.5)
+                player_mistake = (changed_player < -1.0 and changed_player >= -2.0)#[-2.0,-1.0)
+                player_blunder = (changed_player < -2.0 and changed_player >= -6.0)#[-6.0,-2.0)
+                player_missedwin = (changed_player < -6.0)#(-infinity, -6.0)
+                
+                player_better_now = (self.evaluate[-1] >= 0)
+                player_better_before = (self.evaluate[-2] >= 0)
+            else:
+                player_brilliant = (changed_player < -1.0)#(-infinity,-1.0)
+                player_best = (changed_player >= -1.0 and changed_player < 0.1)#[-1.0,0.1)
+                player_good = (changed_player >= -0.1 and changed_player < 0.3)#[0.1,0.3)
+                player_normal = (changed_player >= 0.3 and changed_player < 0.5)#[0.3,0.5)
+                player_inaccurate = (changed_player >= 0.5 and changed_player < 1.0)#[0.5,1.0)
+                player_mistake = (changed_player >= 1.0 and changed_player < 2.0)#[1.0,2.0)
+                player_blunder = (changed_player >= 2.0 and changed_player < 6.0)#[2.0,6.0)
+                player_missedwin = (changed_player > 6.0)#(6.0, infinity)
+                
+                player_better_now = (self.evaluate[-1] <= 0)
+                player_better_before = (self.evaluate[-2] <= 0)
+                
+            if _mas_chess_player_is_master:
+                # Monika is basically giving her best:
+                # In this ELO range, Monika is completely busy thinking, so she won't say anything.
+                if player_brilliant:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2ltsdrd')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2dssdrc')].{w=0.1}.{w=0.1}.{w=0.1}"
+                        ])
+                elif player_best or player_good or player_normal:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2dfsdlc')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2dfsdrc')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2dsc')].{w=0.1}.{w=0.1}.{w=0.1}"
+                    ])
+                elif player_inaccurate:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2ltc')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2ruc')].{w=0.1}.{w=0.1}.{w=0.1}"
+                    ])
+                elif player_mistake:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2euu')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2etc')].{w=0.1}.{w=0.1}.{w=0.1}",
+                        "[mas_quipExp('2tua')].{w=0.1}.{w=0.1}.{w=0.1}"
+                    ])
+                else:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2wsd')].{w=0.1}.{w=0.1}.{w=0.1}?",
+                        "[mas_quipExp('2wsc')].{w=0.1}.{w=0.1}.{w=0.1}?"
+                    ])                 
+            elif _mas_chess_player_is_advancer:
+                # In this ELO range, Monika needs to think about the chess game.
+                # Considering that most players who reach this point are interested in chess, Monika tries to actively guide them.
                 expression = "0"
             else:
                 # Monika was hardly thinking:
                 # Basic guidelines: 
                 # In this ELO range, Monika will not say anything about a player's wrong move, but she will have a slight expression on her face.
                 # And if player played a good move, then she will be happy about it.
-                if played_missedwin or played_blunder:
-                    random_case = renpy.random.randint(1,3)
-                    if random_case is 1:
-                        renpy.show("monika 1rsc")
-                        renpy.say(m,".{w=0.1}.{w=0.1}.{w=0.1}.{nw}",False)
-                        renpy.show("monika 1esd")
-                        renpy.say(m,"Well, [player]. What if I play this move to you?{w=0.2}{nw}",False)
-                    elif random_case is 2:
-                        renpy.show("1esb")
-                        renpy.say(m, "Concentrate on, [player].", False)
-                    else:
-                        #renpy.show(renpy.random.choice("monika 1ltc", "monika 1euc"))
-                        renpy.say(m, "Hmmm...{w=0.3}{nw}", False)
-                elif played_mistake:
-                    if renpy.random.randint(1,2) is 1:
-                        renpy.show("")
-                        renpy.say(m,"WAITING",False)
+                if player_missedwin or player_blunder:
+                    quip = renpy.random.choice([
+                            "[mas_quipExp('1lka')].{w=0.1}.{w=0.1}.{w=0.1}",
+                            "[mas_quipExp('1eka')]Concentrate on, [player]. That wasn't too good.",
+                            "[mas_quipExp('1rua')]Hmmm..."
+                            ])
+                elif player_mistake:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('1esb')]Well...",
+                        "[mas_quipExp('1eka')]That wasn't too nice..."
+                    ])      
+                elif player_inaccurate or player_normal:
+                    quip = renpy.random.choice([
+                        "Not too bad!"
+                    ])
+                elif player_brilliant:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('1wub')]Wow, a great choice!",
+                        "[mas_quipExp('1wub')]Wow...{w=0.1} That really is something!",
+                        "[mas_quipExp('1wud')]That move is more than epic!"
+                    ])
+                else:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('3hua')]Fine. I will play...",
+                        "[mas_quipExp('1lub')]Keep moves up. I am going to play...",
+                        "[mas_quipExp('1hua')]My next move is..."
+                    ])
+                
+            renpy.say(m, quip, False)
+        
+        def monika_reaction_to_herself_move(self):
+            """
+            Let Monika comment on the move she has just played.
+            """
+            changed_monika = self.evaluate[-2] - self.evaluate[-3]
+            quip = ""
+            
+            if self.is_player_white:
+                monika_good = (changed_monika <= 0.1)
+                monika_normal = (changed_monika > 0.1 and changed_monika <= 0.5)
+                monika_bad = (changed_monika > 0.5)
+            else:
+                monika_good = (changed_monika >= -0.1)
+                monika_normal = (changed_monika >= -0.5 and changed_monika < -0.1)
+                monika_bad = (changed_monika < -0.5)
+            
+            if _mas_chess_player_is_master:
+                if monika_good:
+                    quip = renpy.random.choice([
+                        "[mas_quipExp('2lsc')]Hmm...",
+                        "[mas_quipExp('2dsc')]This should suffice...",
+                        "[mas_quipExp('2esa')]This is my response.",
+                        "[mas_quipExp('2esa')]How about this?."
+                    ])
+                elif monika_normal:
+                    quip - renpy.random.choice([
                         
-                elif played_inaccruate or played_normal:
-                    renpy.show("monika 1lua")
-                    renpy.say(m,".{w=0.1}.{w=0.1}.{w=0.1}{nw}",False)
-                    handle_monika_move()
-                    renpy.show("monika 1eub")
-                    renpy.say(m,"This!",False)
-                
-                renpy.show("monika 1eua")
-                    
-            self.handle_monika_move()
-                
+                    ])
+                            
+            elif _mas_chess_player_is_advancer:
+                pass
+            else:
+                pass
+            
+            renpy.say(m,quip,False)
+            
         def game_loop(self):
             """
             Runs the game loop
             """
-            renpy.watch("persistent._mas_chess_elo")
             while not self.quit_game:
                 # Monika turn actions
-                self.position_evaluate()
-                self.monika_reaction()
+                if not self.is_player_turn() and not self.is_game_over:
+                    #self.monika_reaction_to_player_move()
+                    
+                    # Monika is considering about the next move
+                    # Based on the current elo range she will think longer or shorter
+                    renpy.pause(random.random() + persistent._mas_chess_elo/2500 + self.think_time_extra)
+                    
+                    self.handle_monika_move()
+                    #self.monika_reaction_to_herself_move()
 
                 # player turn actions
                 # 'is_game_over' is to allow interaction at the end of the game
-                self.position_evaluate()
                 while self.is_player_turn() or self.is_game_over:
-                    # we always reshow Monika here
-                    renpy.show("monika 1eua")
-
                     # interactions are handled in the event method
                     interaction = ui.interact(type="minigame")
                     # Check if the palyer wants to quit the game
                     if self.quit_game:
-                        return interaction
-            renpy.unwatch("persistent._mas_chess_elo")
+                        return list(interaction) + self.evaluate
+                    
             return None

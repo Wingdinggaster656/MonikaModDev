@@ -29,7 +29,7 @@ init -2 python in mas_topics:
     UNSEEN = 50
     SEEN = UNSEEN + 49
     MOST_SEEN = SEEN + 1
-
+            
     def topSeenEvents(sorted_ev_list, shown_count):
         """
         counts the number of events with a > shown_count than the given
@@ -17739,4 +17739,172 @@ label monika_hedonism:
     m 2dkc "Hedonism, at its core, ignores everything but pleasure."
     m 7etd "It's no wonder most people don't follow that belief...{w=0.3}it's too simple, where morality is complicated."
     m 1eud "So it makes sense why Oscar Wilde portrayed hedonism in a bad light."
+    return
+
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_ask_comments",
+            conditional="mas_getEVL_shown_count('mas_chess_play_again_ask') > 5 and renpy.seen_label('monika_chess_ask_comments') is False",
+            action=EV_ACT_PUSH
+        )
+    )
+
+label monika_chess_ask_comments:
+    m 2euc "So, [player]..."
+    m 2eud "You know, we've already played several games of chess."
+    m 1euc "I've been commenting on your moves in previous games."
+    m 1ruc "I think it helps you a little bit to realize that certain moves are good or bad."
+    m 1ttbsa "And maybe you actually enjoy listening to me more than chess itself..."
+    m 2etc "But now I'm thinking, I didn't even ask you about it."
+    m 2ltc "Maybe you actually prefer a quiet game? Leave you alone for a pure mind?"
+    m 2etc "What do you say?{nw}"
+    $ _history_list.pop()
+    menu:
+        m "What do you say?{fast}"
+        "Yeah, I actually want a quiet game.":
+            $ persistent._mas_chess_quiet = True
+            m 2wud "Oh, sorry for before!"
+            m 2eka "I will stay quiet then."
+        "Nope, I like your comments.":
+            $ persistent._mas_chess_quiet = False
+            m 2hub "Well, glad to hear that!"
+            m 2hua "Then I will keep up with those comments!"
+            
+    m 1eua "If you changed your idea, you could always ask me to change, too."
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_ask_for_quiet",
+            category=["games"],
+            prompt="Would you leave me a quiet game?",
+            action=EV_ACT_POOL,
+            conditional="persistent._mas_chess_quiet is False and renpy.seen_label('monika_chess_ask_comments') is True"
+        )
+    )
+
+label monika_chess_ask_for_quiet:
+    $ persistent._mas_chess_quiet = True
+    m 1hub "No problem at all, [player]!"
+    m 1hua "I can totally understand people wanting a quiet game that makes them think calmly."
+    m 1eub "If you want me to comment again in the future, feel free to ask!"
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_ask_for_talk",
+            category=['games'],
+            prompt="I'd like your chess comments",
+            action=EV_ACT_POOL,
+            conditional="persistent._mas_chess_quiet is True and renpy.seen_label('monika_chess_ask_comments') is True"
+        )
+    )
+
+label monika_chess_ask_for_talk:
+    $ persistent._mas_chess_quiet = False
+    m 1euu "Feeling a little lonely, huh?"
+    m 1eubla "It's okay. Your cute girlfriend could always warm things up."
+    m 3eua "From now on, I will comment on our moves!"
+    m 3hksdlb "Hmm...{w=0.3} Well, except when things get too complicated. I couldn't distract myself at those times."
+    m 1hub "Ahaha!"
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_finalboss",
+            action=EV_ACT_PUSH,
+            conditional="persistent._mas_chess_elo > 2100 and renpy.seen_label('monika_chess_finalboss') is False"
+        )
+    )
+
+label monika_chess_finalboss:
+    #NOTE: THE CHALLENGE SYSTEM ISN'T FINISHED YET
+    $ persistent._mas_chess_finalboss = True
+    m 2esd "Say, [player]?"
+    m 2esa "We've played a lot of chess together, and I've noticed that you seem to be pretty good at it."
+    m 2tta "A little conceited ground to say, I actually went easy on you all the time."
+    m 2eud "But now, given your past at chess, I'm thinking maybe you don't need that."
+    m 2eua "In the future you can tell me that you want a serious game with me."
+    m 2efb "And then I'll leave no stone unturned."
+    m 2htsdra "...{w=0.2}Don't worry, in fact, based on your previous performance, we should be not much difference."
+    m 1eub "Anyway, let me know if you want a serious game in the future!"
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_ask_go_easier",
+            prompt="May you go easier on me at chess?",
+            category=['games'],
+            action=EV_ACT_POOL,
+            conditional="persistent._mas_chess_stats['losses'] + persistent._mas_chess_stats['practice_losses'] > 10"
+        )
+    )
+
+label monika_chess_ask_go_easier:
+    if persistent._mas_chess_elo == 1350:
+        m 1rka "Uh..."
+        m 1eka "I understand why you're asking, but, no offense, and I don't mean to brag, I just have to say..."
+        m 1hksdla "I've actually lowered my level to a low level already."
+        m "The skill I'm using with you is about what a beginner could achieve in a week or two."
+        m 1lksdla "If I lower it any further, my movement will be purely random and meaningless..."
+        m 1eksdla "In that case, I'm afraid, chess has lost its meaning."
+        m 1hksdla "Maybe you should consider taking some classes?"
+        # TODO: Add Monika's chess tourtrial dialogue here
+        m 1eud "But anyways, [player]. There is one thing you should know."
+        m 1euc "At the end of the day, chess is just a game."
+        m 1esd "Just because you can't beat me at chess doesn't mean you're inferior."
+        m 1esa "And I will never think less of you for even a tiny bit because of your chess skills."
+        m 2ekbla "You are my hero. You saved me, and also came here to accompany me..."
+        m 2eubsb "That's enough to make you sparkle in my eyes."
+        m 2eka "So, sorry again. But I really don't know how to further reduce my level..."
+        m "And please never get angry because you can't beat me at chess, okay?"
+    else:
+        $ mas_chess._decrement_chess_difficulty(modifier = 2)
+        m 3hua "Totally fine!"
+        m 1eub "From now on, I will go easier on you."
+        m 2tsa "But don't expect to completely relax. Chess is a competition, after all."
+        m 1hub "Ahaha!"
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_TEST",
+            prompt="I'd like to see the highest ELO",
+            category=['games'],
+            pool=True
+        )
+    )
+
+label monika_chess_TEST:
+    $ mas_chess._increment_chess_difficulty(modifier = 99)
+    m "D i e"
+    return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_TEST2",
+            prompt="I'd like to see the lowest ELO",
+            category=['games'],
+            pool=True
+        )
+    )
+
+label monika_chess_TEST2:
+    $ mas_chess._decrement_chess_difficulty(modifier = 99)
+    m "G o o d"
     return
