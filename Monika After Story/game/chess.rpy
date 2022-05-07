@@ -16,10 +16,9 @@ default persistent._mas_chess_stats = {
 #1700 = Advancer
 #2000 = Master
 #2400 = Grandmaster
-#2900 = Probably the human limit
-#Here we limit Monika's ELO Rating in 1350~2500 the range.
-#(The minimum ELO score Stockfish allows is 1350, otherwise we would have put it around 850)
-default persistent._mas_chess_elo = 1350
+#3000 = Probably the human limit
+#Here we limit Monika's ELO Rating in 200~2500 the range, and give her a 850 as the default setting.
+default persistent._mas_chess_elo = 850
 define _mas_chess_player_is_beginner = (persistent._mas_chess_elo < 1700)
 define _mas_chess_player_is_advancer = (persistent._mas_chess_elo >= 1700 and persistent._mas_chess_elo < 2100)
 define _mas_chess_player_is_master = (persistent._mas_chess_elo >= 2100)
@@ -259,7 +258,7 @@ init python in mas_chess:
                     to give extra multipliers based on player performance in a game.
                     (Default: 1)
         """
-        store.persistent._mas_chess_elo = max(store.persistent._mas_chess_elo - 40*modifier, 1350)
+        store.persistent._mas_chess_elo = max(store.persistent._mas_chess_elo - 40*modifier, 200)
 
     def _get_player_color(loaded_game):
         """
@@ -986,8 +985,10 @@ label mas_chess_start_chess:
             starting_fen=starting_fen,
             casual_rules=casual_rules
         )
+        renpy.watch("persistent._mas_chess_elo")
         chess_displayable_obj.show()
         results = chess_displayable_obj.game_loop()
+        renpy.unwatch("persistent._mas_chess_elo")
         chess_displayable_obj.hide()
 
         #Enable quick menu
@@ -3346,7 +3347,7 @@ init python:
             Starts Monika's analysis of the board
             """
             self.stockfish.stdin.write("position fen {0}\n".format(self.board.fen()))
-            self.stockfish.stdin.write("go movetime 500\n")
+            self.stockfish.stdin.write("go depth 10\n")
 
         def additional_setup(self):
             """
@@ -3448,9 +3449,15 @@ init python:
                 self.stockfish = open_stockfish(fp)
 
             #Set Monika's parameters
+            #NOTE: The lower ELO limit of Stockfish is 1350, so when the ELO is lower than 1350, we are actually using "Skill Level" to set difficulty.
+            #      We consider Skill Level 6 as ELO 1350. Skill Level is decreased every time the ELO decreases by 160.
             self.stockfish.stdin.write("uci\n")
-            self.stockfish.stdin.write("setoption name UCI_LimitStrength value true\n")
-            self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
+            if persistent._mas_chess_elo >= 1350:
+                self.stockfish.stdin.write("setoption name UCI_LimitStrength value true\n")
+                self.stockfish.stdin.write("setoption name UCI_Elo value {0}\n".format(persistent._mas_chess_elo))
+            else:
+                skill_level = max(6 - (1350 - persistent._mas_chess_elo) // 160, 0)
+                self.stockfish.stdin.write("setoption name Skill Level value {0}\n".format(skill_level))
 
             #And set up facilities for asynchronous communication
             self.queue = collections.deque()

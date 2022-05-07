@@ -17852,7 +17852,9 @@ init 5 python:
     )
 
 label monika_chess_ask_go_easier:
-    if persistent._mas_chess_elo == 1350:
+    if persistent._mas_chess_elo < 400:
+        # Although the lower limit is 200, the player can only go down to 400 by asking for difficulty reduction.
+        # Monika only lowers the difficulty further when she really sees the player struggling against her.
         m 1rka "Uh..."
         m 1eka "I understand why you're asking, but, no offense, and I don't mean to brag, I just have to say..."
         m 1hksdla "I've actually lowered my level to a low level already."
@@ -17882,15 +17884,26 @@ init 5 python:
         Event(
             persistent.event_database,
             eventlabel="monika_chess_TEST",
-            prompt="I'd like to see the highest ELO",
+            prompt="I'd like to increase ELO",
             category=['games'],
             pool=True
         )
     )
 
 label monika_chess_TEST:
-    $ mas_chess._increment_chess_difficulty(modifier = 99)
-    m "D i e"
+    python:
+        size = 0
+        while size <= 0:
+            size = store.mas_utils.tryparseint(
+                renpy.input(
+                    'It is?',
+                    allow=numbers_only,
+                    length=5
+                ).strip(),
+                0
+            )
+        mas_chess._increment_chess_difficulty(modifier = size)
+    m "It should be [persistent._mas_chess_elo] now."
     return
 
 init 5 python:
@@ -17898,13 +17911,24 @@ init 5 python:
         Event(
             persistent.event_database,
             eventlabel="monika_chess_TEST2",
-            prompt="I'd like to see the lowest ELO",
+            prompt="I'd like to drop ELO",
             category=['games'],
             pool=True
         )
     )
 
 label monika_chess_TEST2:
-    $ mas_chess._decrement_chess_difficulty(modifier = 99)
-    m "G o o d"
+    python:
+        size = 0
+        while size <= 0:
+            size = store.mas_utils.tryparseint(
+                renpy.input(
+                    'It is?',
+                    allow=numbers_only,
+                    length=5
+                ).strip(),
+                0
+            )
+        mas_chess._decrement_chess_difficulty(modifier = size)
+    m "It should be [persistent._mas_chess_elo] now."
     return
