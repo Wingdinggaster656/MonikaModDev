@@ -17740,3 +17740,28 @@ label monika_hedonism:
     m 7etd "It's no wonder most people don't follow that belief...{w=0.3}it's too simple, where morality is complicated."
     m 1eud "So it makes sense why Oscar Wilde portrayed hedonism in a bad light."
     return
+
+init 5 python:
+    addEvent(
+        Event(
+            persistent.event_database,
+            eventlabel="monika_chess_really_bad_chess_unlock",
+            action=EV_ACT_PUSH,
+            conditional="persistent._mas_chess_elo <= 300"
+        )
+    )
+
+label monika_chess_really_bad_chess_unlock:
+    m "Hey [player]. I fully understand that this is normal, but..."
+    m "It seems that you are really struggling to against me when playing chess."
+    m "Well, chess is ultimately just a game, and games are meant to be fun."
+    m "So, to keep us entertained, I can offer us a new chess mode!"
+    m "That's {i}Really Bad Chess{/i}. A concept that isn't created by myself."
+    m "Uh, despite the name {i}Really Bad{/i}, this game mode isn't awful."
+    m "It simply means {i}Even if you are really bad at chess, this mode could provide fun to you{/i}."
+    m "In normal chess, we start with fixed pieces."
+    m "And in Really Bad Chess mode, we get random pieces."
+    m "Like, if you are lucky enough, you could even get like 5 queens in the beginning!"
+    m "This mode of course doesn't help chess learning, but it is at least fun to play!"
+    m "If you want to see how it works, you can start a new game with me right now!"
+    return
