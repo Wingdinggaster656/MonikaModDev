@@ -3317,7 +3317,7 @@ init 5 python:
             persistent.event_database,
             eventlabel="monika_chesslesson_pgn",
             category=["chess lessons"],
-            prompt="PGN standard",
+            prompt="Extension Point 2 - PGN format",
             pool=True,
             conditional="seen_event('monika_chesslesson_init_finished')",
             action=EV_ACT_UNLOCK,
@@ -3327,18 +3327,8 @@ init 5 python:
 
 label monika_chesslesson_pgn:
     $ ev = mas_getEV("monika_chesslesson_pgn")
-    if ev.shown_count > 0:
-        m 1eub "Do you want to go through the whole lesson again, or do you want to go straight to the test, [player]?{nw}"
-        $ _history_list.pop()
-        menu:
-            m "Do you want to go through the whole lesson again, or do you want to go straight to the test, [player]?{fast}" 
-            "I want to go through the whole lesson again.":
-                m 1hua "Okay!"
-            "Straight to test.":
-                m 1tfb "UNFINISHED?"
-                return
-    
-    m 1eua "In chess community, there is a very important recording standard called PGN standard."
+
+    m 1eua "In chess community, there is a very important recording standard called {b}PGN standard{/b}."
     m 1eub "The full name is {i}\"Portable Game Notation\"{/i}."
 
     # To know if the player saved a pgn before.
@@ -3364,128 +3354,44 @@ label monika_chesslesson_pgn:
     
     show monika 1eua at t21
     python:
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1")
+        game = MASChessDisplayableBase(is_player_white=True)
         game.toggle_sensitivity()
         game.show()
         renpy.pause(2.0)
-    
-    m "Alright.{w=0.1} Let us firstly talk about how to record pawns."
-    m "In this game, white just pushed the e2 pawn to e4."
-    m 1eua "This move is recorded as \"e4\"."
-    m 1lua "Let me give you one more example...{w=0.5}{nw}"
-
+    m "The so-called PGN standard is actually not too difficult."
+    m "To record the movement of a piece, first, we write down which piece is moving."
+    m "We use K to stand for King, Q for a Queen, N for a Knight, B for a Bishop, R for a Rook."
+    m "The special case is the pawn."
+    m "When we're referring to a pawn, we don't need to write any letter down to announce this is a pawn moving."
+    m "In other words, if we're recording a pawn's movement, we will skip the part of referring to it."
+    m "Anyway, after we marked which piece is moving, we write down its target square."
+    m "Let me just give you an example so you will find this is simple."
     python:
-        game.queue_move("d7d5")
-        game.handle_monika_move()
-        renpy.pause(2.0)
-    
-    m 1lub "And now, black just pushed the d7 pawn to d5."
-    m "This move is recorded as \"d5\"."
-    m 1eua "Have you noticed any patterns?"
-    m 1hua "If you haven't, don't worry, it's logical.{w=0.2} After all, this is a little hard to understand."
-    m 1esa "When we're refering a pawn, we refer to it by its file index."
-    m 1esb "In \"e4\" the move, the letter \"e\" means we are pushing the e-file pawn."
-    m 2esb "And it's white moving, white has only one pawn can move to rank 4 now."
-    m 2esa "So we simply record this move as \"e4\"."
-    m 2lsb "And in \"d5\" the move, black is pushing the d-file pawn, so we uses the letter \"d\" to refer to that pawn."
-    m 2etc "At this point, you may think of a question:{w=0.5}{nw}"
-    extend 2etd " it is possible for pawns to switch to other files, such as capturing, then how to record it?"
-    m 2lsc "Let us see this example:"
-
-    python:
-        game.queue_move("e4d5")
+        game.queue_move("g1f3")
         game.handle_player_move()
-        renpy.pause(2.0)
-    
-    m 2esa "In this move, white's pawn captures black's pawn and moves from e4 to d5."
-    m 2esb "Because this captor pawn was originally on the e-file, so we firstly write a letter \"e\" down to indicate that \"This is a move of e-file pawn\"."
-    m 7esb "And this pawn did a capture job, so we secondly write another letter \"x\"."
-    m "It's because that {i}the letter \"x\" in PGN standard is standing for capturing{/i}."
-    m 2eua "Now, the capture target is on the d5 square, so we write the target square down: \"d5\"."
-    m 2hua "Done!{w=0.3} The full record of this move is \"exd5\"."
-    m 2eua "You might are curious about how to record the promotions of pawns.{w=1.0}{nw}"
-    extend 2lua " Let us look at this example:"
-
+    m "In this move which I just played, the knight moved to f3 square."
+    m "Since it's a knight moving, we write down a letter N to announce this is a knight moving."
+    m "Then, since this knight moved to f3 square, so we write down f3."
+    m "And this is done already! The final record of this move is just a simple \"Nf3\"!"
+    m "Another example is to push the e2 pawn to e4,{w=0.2}{nw}"
     python:
         game.hide()
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "8/1P6/8/8/8/8/8/8 w - - 0 1")
+        game = MASChessDisplayableBase(is_player_white=True)
         game.toggle_sensitivity()
         game.show()
-        renpy.pause(1.0)
-    
-    m 2lub "In this position, there is a white pawn on b7 square ready to promote."
-    m 4lua "Let us play that move."
-
-    python:
-        game.queue_move("b7b8q")
+        game.queue_move("e2e4")
         game.handle_player_move()
-        renpy.pause(2.0)
-    
-    m 4eua "Now let us consider how to record this move."
-    m 2eub "Firstly, this is a b-file pawn moving, so we write the letter \"b\" down as the beginning."
-    m "And it moved to square b8, b8 is on the b-file too, this move didn't change the file of that pawn.{w=0.3} So we write the number \"8\" down."
-    m 2esa "Now let's think about how to represent \"promotion\"."
-    m 2esd "If there is only one possible promotion in chess, and that is to be queen, there is no special record required."
-    m 2rsd "We can just finish the record as \"b8\" here.{w=0.3} After all, in that possibility, people would see the record of a pawn reached the last rank and know that it must have become a queen."
-    m 2esd "But the problem is that there isn't only one possible promotion.{w=0.2} There are four possibilities. Queen, Rook, Bishop or Knight."
-    m 2esc "So it is necessary to write down what this pawn became."
-    m 2lsb "At this point, the pawn became a queen, so we write \"=Q\" to record it was promoted to a queen."
-    m 2hua "Done!{w=0.5} The full record of this promotion is \"b8=Q\"."
-    m 2hub "And as what you can guess, if the pawn has just been prmoted to a bishop instead of a queen, then it is recorded as \"b8=B\"."
-    m 2hua "And for knight situation, it is \"b8=N\", for rook situation, it is \"b8=R\"."
-    m 2eub "Now, what if a pawn is promoted while capturing a piece?"
-    m 2lub "Let me give you another example:"
-
-    python:
-        game.hide()
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "3q4/2P5/8/8/8/8/8/8 w - - 0 1")
-        game.toggle_sensitivity()
-        game.show()
-        renpy.pause(2.0)
-    
-    m 7lub "In this position, white is going to play this move:"
-
-    python:
-        game.queue_move("c7d8q")
-        game.handle_player_move()
-        renpy.pause(2.0)
-    
-    m 2eub "How to record this? Let's first ignore the action of \"promote\"."
-    m "From the previous explanation, it is not difficult to understand that the record of \"capture\" part should be written as \"cxd8\"."
-    m 2esa "And then, it promoted to a queen, so we added \"=Q\"."
-    m 2hsa "So the full record is \"cxd8=Q\"."
-    m 2rua "Hmm...{w=0.2}{nw}"
-    extend 2rusdlb" Though so far we've only covered the pawn movement, we haven't covered any other pieces at all,{w=0.2}{nw}"
-    extend 4esb " but don't worry! With these in mind, you can quickly understand the following."
-    m 2duc "Hold on, let me set another position on the board...{w=1.0}{nw}"
-
-    python:
-        game.hide()
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "4R3/8/8/2R5/8/8/8/8 w - - 0 1")
-        game.toggle_sensitivity()
-        game.show()
-    
-    show monika 2eua
-    pause 2.0
-    
-    m 2eub "When we're talking about a piece that is pawn, we simply use the file index it is in to refer to it."
-    m 2rud "But this does not apply for pieces that are not pawns."
-    m 2eud "If we're recording a piece which is not a pawn, then we must firstly write down the piece type."
-    m 2eub "Like, if it's a Rook moving, then uses letter \"R\" to refer to it."
-    m "For knights, \"N\".{w=0.2}\nAnd \"K\" for King,{w=0.1} \"Q\" for Queen,{w=0.1} \"B\" for Bishops."
-    m 2eua "After we recorded which type of piece is moving, we write down its target square."
-    
-    python:
-        game.queue_move("c5c3")
-        game.handle_player_move()
-    
-    m 2lub "Like this move.{w=0.3} Since it's a rook moving, so we firstly write the letter \"R\" down."
-    m 4lub "And then, this rook moved to c3 square, so we then write the \"c3\" down."
-    m 4hua "Done again!{w=0.3} The full record is \"Rc3\", which means \"Rook moved to c3 square\"."
-    m 2eub "In this case, we don't need to write down the starting position of the rook because we have the target position."
-    m 2eua "Obviously, in the current situation, the white has only one rook able to move to c3, that's the c5 rook."
-    m 2eud "{i}One case where we need to keep track of the initial position is when the player who is moving has more than one piece from even only one type, and all of them can move to the target square.{/i}"
-    m 2luc "Like this...{w=0.5}{nw}"
+    extend " how can we record this move?"
+    m "Without doubt, we should first announce the moving piece's type."
+    m "And since this is a pawn moving, we don't need to write anything down."
+    m "So we can just write down the target square, e4."
+    m "And that's all! The final result is \"e4\", nothing else!"
+    m "Isn't it very easy and efficient?"
+    m "{i}To keep the record length as short as possible while keeping the information clear{/i}, this is the tenet of PGN format!"
+    m "However, after I say this tenet, you may realize a problem."
+    m "In our case, writing down which piece moved and the target square is enough to make the record clear."
+    m "But what if there are pieces of the same type that can reach the same target square at the same time?"
+    m "Let me just give you one more example."
     
     python:
         game.hide()
@@ -3493,7 +3399,7 @@ label monika_chesslesson_pgn:
         game.toggle_sensitivity()
         game.show()
 
-    extend 2lud " The c6 square is reachable for both two rooks, so we can't just write \"Rc6\" for it does not specify which rook is moving."
+    m 2lud "In this situation, the c6 square is reachable for both two rooks, so we can't just write \"Rc6\" for it does not specify which rook is moving."
 
     python:
         game.queue_move("c5c6")
@@ -3504,8 +3410,7 @@ label monika_chesslesson_pgn:
     m 2esc "In any case, it's a Rook moving.{w=0.3} So let's write the letter \"R\" down."
     m 2esd "However, it's not like previous now.{w=0.5} Simply writing down the target square obviously doesn't tell us which rook is moving, so we'll have to write down the initial position."
     m 2etd "So we should record this move as \"Rc5c6\"?"
-    m 1eud "Actually, there is no need.{w=0.5}{nw}"
-    extend 1eub " An important tenet of the PGN specification is {i}to keep the record length as short as possible while keeping the information clear{/i}."
+    m 1eua "Actually, there is no need.{w=0.5}{nw}"
     m "In this position, we can ignore the c-file information and just write down \"5\" the rank information to mark the location."
     m 1hua "So the final result is \"R5c6\"."
 
@@ -3541,48 +3446,74 @@ label monika_chesslesson_pgn:
     
     extend 2eud " Then we have no choice but to write down the initial position completely. The final result is \"Qb6d4\"."
     m 2eub "Of course, this is a very, very rare situation. In practice, we usually just write the rank message or the file message, and that would be enough."
-    m "Now let's talk about capturing from pieces that are not pawns.{w=0.3}{nw}"
-    extend 2duc " Hold on...{w=0.5}{nw}"
-    
+    m "At this point, we're almost halfway through this lesson."
+    m "The rest of the time will be devoted to adding a few special rules."
+    m "Rule 1: {i}If a move removes a piece, an \"x\" letter is added to the PGN record of the move between the piece type and the target square{/i}."
+    m "With an example you'll easily understand!"
     python:
         game.hide()
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "5k2/8/2N5/4q3/8/4R3/8/1K6 w - - 0 1")
+        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "8/8/8/8/1r2N3/8/8/8 b - - 0 1")
         game.toggle_sensitivity()
         game.show()
-        renpy.pause(1.0)
-    
-    m 2eub "It's white's turn now.{w=0.2} White could capture this queen with rook,{w=0.2}{nw}"
-    extend 2lub " like this:{w=1.5}{nw}"
-
+    m "Look! Now, if black's rook goes to e4, it will remove the knight from e4."
     python:
-        game.queue_move("e3e5")
+        game.queue_move("b4e4")
         game.handle_player_move()
-        renpy.pause(1.0)
-    
-    m 2lua "To record this move, first of all, since this is a rook move, let's write down the letter \"R\"."
-    m 2lub "And it's a capture move, so we then write down the letter \"x\"."
-    m "We don't need to write down what we captured."
-    m 2eub "All we need to do is write down the target's position, because once we write down the position, we know who's on that square due to a series of previous PGN records."
-    m 2hua "So this record is: \"Rxe5\"."
-    m 2eua "If we have multiple rooks that can capture it at the same time, then, as we mentioned earlier, before writing down the letter \"x\" to indicate the capture, say which rook it is."
-
+    m "If this move didn't capture a piece, then it's simply a \"Re4\", that's all."
+    m "But that's not the current case! This rook did capture a piece!"
+    m "So, according to the rule 1, an \"x\" letter is added!"
+    m "The final result should be \"Rxe4\"."
+    m "Notice the position of this letter should be \"between the piece information and the target square information\"."
+    m "As mentioned earlier, if writing down the target square doesn't keep the information clear, then write down the starting position is needed."
+    m "And in that case, where do we put the \"x\"?"
+    m "The answer is, before the target square, after the initial position."
+    m "So the move we just talked about like Qb6d4, R1d1, if they captured a piece, then they should be Qb6xd4, R1xd1."
+    m "There is one last special point, which you may have thought of, and that is what happens when a pawn takes a piece?"
     python:
         game.hide()
-        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "8/8/8/R2q3R/8/8/8/8 w - - 0 1")
+        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "8/8/3n4/2P1P3/8/8/8/8 w - - 0 1")
         game.toggle_sensitivity()
         game.show()
-    
-    m 2lub "Like now, if we moved the a-file rook to capture this d5 queen,{w=0.6}{nw}"
-
+    m "Let us say this situation."
     python:
-        game.queue_move("a5d5")
+        game.queue_move("c5d6")
         game.handle_player_move()
-    
-    extend 4lub " then it's recorded as \"Raxd5\"."
-    $ game.hide()
-
-    m 2eub "And now, this lesson is finally going to end. Only two special rules need to be noted."
-    m 2eua "{i}If a move successfully checked a player, write a \"+\" at the end of the record to indicate that the move checked.{/i}"
+    m "If a c-file pawn captured this knight, how should we record it?"
+    m "We can't just write \"xd6\" for it doesn't keep the information clear."
+    m "So, a special case is, if a pawn catches a piece, then it will be referred to as the file that the pawn was originally in."
+    m "So the current move should be recorded as \"cxd6\" for it's a c-file pawn captured this knight."
+    m "These are the rule 1."
+    extend " Don't worry, the rule 1 is the most complicated one, the following will be easier."
+    m "The rule 2 is something about the promotion."
+    python:
+        game.hide()
+        game = MASChessDisplayableBase(is_player_white=True, starting_fen = "8/1P2P3/8/8/8/8/3p2p1/8 w - - 0 1")
+        game.toggle_sensitivity()
+        game.show()
+    m "If a pawn promoted in a move, what should we do to record it?"
+    python:
+        game.queue_move("b7b8q")
+        game.handle_player_move()
+    m "First of all, the promotion is caused by a pawn moving to the last rank, so let's record the \"reaching the last line\" part first."
+    m "This part is easy, because this is a pawn movement, so just write the target square is enough. \"b8\", that's all."
+    m "Now let us think about how to represent the promotion."
+    m "In this case, the pawn promoted to a queen. People record this promotion as \"=Q\"."
+    m "So the final result is \"b8=Q\"."
+    m "Similarly, if it is promoted to some other types..."
+    python:
+        game.queue_move("d2d1n")
+        game.handle_monika_move()
+    m "This is \"d1=N\"."
+    python:
+        game.queue_move("e7e8r")
+        game.handle_player_move()
+    m "This is \"e8=R\"."
+    python:
+        game.queue_move("g2g1b")
+        game.handle_monika_move()
+    m "This is \"g1=B\"."
+    m "That's all there is to this rule."
+    m 2eua "And rule 3, {i}if a move successfully checked a player, write a \"+\" at the end of the record to indicate that the move checked.{/i}"
     m 2duc "Let me take another example...{w=0.5}{nw}"
 
     python:
@@ -3592,169 +3523,54 @@ label monika_chesslesson_pgn:
 
     m 2lud "Now, if white moved the rook to h2, then it's a check."
     m 2eud "The record should have been written as \"Rh2\", but now it checks another player, so it should be written as \"Rh2+\"."
-    m "And then, another special rule is, {i}if a move successfully checkmated a player, write a \"#\" at the end of the record to indicate that the move checkemated.{/i}"
+    m "And similarly, the rule 4 is, {i}if a move successfully checkmated a player, write a \"#\" at the end of the record to indicate that the move checkemated.{/i}"
     m 2duc "Let me set another situation on the board...{w=1.0}{nw}"
     python:
         game.hide()
         game = MASChessDisplayableBase(is_player_white=True, starting_fen = "7k/5Q2/6K1/8/8/8/8/8 w - - 0 1")
         game.toggle_sensitivity()
         game.show()
-    m 2lub "Okay. Now white is ready to play the deadly move:{w=0.5} Queen to g7, which ends this game."
+    m 2lub "Okay. Now white is ready to play the deadly move:{w=0.3} Queen to g7, which ends this game."
     m 2eub "Since the move is going to checkmate the opponent, this move is supposed to be recorded as \"Qg7#\"."
-    $ game.hide()
-    m 1hua "That's all we need to say."
-    extend 1eub " If you don't mind, I can give you some questions to solve so we can ensure you've learned it correctly."
-    m "Do you have the time now?{nw}"
-    $ _history_list.pop()
-    menu:
-        m "Do you have the time now?{fast}"
-        "Yes, come on.":
-            m 1hua "Okay!"
-            m "Here we go!"
-            #jump monika_chesslesson_pgn_question1
-            m 1eud "..."
-            m 1euc "UNFINISHED."
-        "Sorry, maybe another time.":
-            m 1eua "It's okay, [player]."
-            m 1eub "Whenever you want to come, just ask me about this lesson again."
-            m 1hua "For now, take your time, [player]~"
-            show monika at t11
-            m "Thanks for listening!"
-            return
-    show monika at t11
-    return
-
-label monika_chesslesson_pgn_question1:
-    m 1hua "Question 1!"
-    show monika at t21#DEBUG USE.
+    if seen_event("monika_chesslesson_intro_basic_king"):
+        m "One and the last special rule is about the castle."
+    else:
+        m "The last special rule has something to do with a special move called {b}castle{/b}."
+        m "I haven't taught you what \"castle\" is, so just in case, do you know what is castle?{nw}"
+        $ _history_list.pop()
+        menu:
+            m "I haven't taught you what \"castle\" is, so just in case, do you know what is castle?{fast}"
+            "Yes, I know.":
+                m "That's good! Then let us learn about how to record castle."
+            "No, I don't know.":
+                m "Hmm...{w=0.3}{nw}"
+                extend " that's not a problem! I'm going to teach you that one!"
+                python:
+                    game.hide()
+                    game = MASChessDisplayableBase(is_player_white=True, starting_fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Kkq - 0 1")
+                    game.toggle_sensitivity()
+                    game.show()
+                m "Castle is a special move that can only be played once in a game."
+                m "The condition to play this move is a little bit complicated, so I'm going to talk about it in the lesson on the movement of the King."
+                m "Anyway, this is a special move that moves both the king and rook."
+                m "It has two types, long-castle and short-castle."
+                m "They are divided according to which rook is chosen--the one further to the king or closer to the king."
+                m "Neturally, if it's the further one, then it's the long-castle. And if it's the closer one, then it's the short-castle."
+    m "When we launched a short-castle like{nw}"
     python:
-        piece_type = random.choice(['Q','B','N','P','R','K'])
-        piece_type = 'B'#DEBUG USE.
-        piece_position_file = random.choice(['a','b','c','d','e','f','g','h'])
-        piece_position_rank = random.randint(1,8)
-        fen_to_start = ""
-        for i in range(1,9,1):
-            if i == 9-piece_position_rank:
-                fen_to_start += str(ord(piece_position_file) - ord('a')) if str(ord(piece_position_file) - ord('a') -1) != "0" else ""
-                fen_to_start += piece_type
-                fen_to_start += str(7 - ord(piece_position_file) + ord('a')) if str(7 - ord(piece_position_file) + ord('a')) != "0" else ""
-                fen_to_start += "/"
-            else:
-                fen_to_start += "8/"
-        
-        fen_to_start = fen_to_start[:-1]# Delete the last '/' we inserted.
-        fen_to_start += " w - - 0 1"
-
-        if piece_type == 'Q':
-            if random.randint(1,2) == 1:
-                # Random result 1: Non-Diagonal move.
-                if random.randint(1,2) == 1:
-                    # Sub-Random result 1: Move to up or down.
-                    target_position_rank_available = [1,2,3,4,5,6,7,8]
-                    target_position_rank_available.pop(piece_position_rank-1)
-                    target_position_rank = random.choice(target_position_rank_available)
-                    target_position_file = piece_position_file
-                else:
-                    # Sub-Random result 2: Move to left or right.
-                    target_position_rank = piece_position_rank
-                    target_position_file_available = ['a','b','c','d','e','f','g','h']
-                    target_position_file_available.remove(piece_position_file)
-                    target_position_file = random.choice(target_position_file_available)
-            else: 
-                # Random result 2: Diagonal move.
-                target_position_rank_available = [1,2,3,4,5,6,7,8]
-                target_position_rank_available.pop(piece_position_rank-1)
-                target_position_rank = random.choice(target_position_rank_available)
-                target_position_file = chr(ord(piece_position_file) + (target_position_rank - piece_position_rank) * random.choice([-1,1]))
-        elif piece_type == 'R':
-            if random.randint(1,2) == 1:
-                target_position_rank_available = [1,2,3,4,5,6,7,8]
-                target_position_rank_available.pop(piece_position_rank-1)
-                target_position_rank = random.choice(target_position_rank_available)
-                target_position_file = piece_position_file
-            else:
-                target_position_rank = piece_position_rank
-                target_position_file_available = ['a','b','c','d','e','f','g','h']
-                target_position_file_available.remove(piece_position_file)
-                target_position_file = random.choice(target_position_file_available)
-        elif piece_type == 'B':
-            target_position_rank_available = [1,2,3,4,5,6,7,8]
-            target_position_rank_available.pop(piece_position_rank-1)
-            #for i in range(0,7,1):
-                #if target_position_rank_available[i] - piece_position_rank > 
-            target_position_rank = random.choice(target_position_rank_available)
-            target_position_file = chr(ord(piece_position_file) + (target_position_rank - piece_position_rank) * random.choice([-1,1]))
-        elif piece_type == 'N':
-            target_position_file = 1
-        elif piece_type == 'P':
-            renpy.pause(1.0)
-        else:
-            # piece_type == 'K'   situation.
-            target_position_file = piece_position_file
-            target_position_rank = piece_position_rank
-            while target_position_file == piece_position_rank and target_position_file == piece_position_file:
-                target_position_rank = chr(ord(piece_position_rank) + random.randint(-1,1))
-                target_position_file = chr(ord(piece_position_file) + random.randint(-1,1))
-
-        game = MASChessDisplayableBase(is_player_white = True, starting_fen = fen_to_start)
-        game.toggle_sensitivity()
-        game.show()
-        renpy.pause(2.0)
-        move_goingtoplay = piece_position_file + str(piece_position_rank) + target_position_file + str(target_position_rank)
-    m "target_position_rank_available: [target_position_rank_available]"
-    m "target_position_rank: [target_position_rank]"
-    m "[move_goingtoplay]"
-    python:
-        game.queue_move(move_goingtoplay)
+        game.queue_move("e1g1")
         game.handle_player_move()
-        renpy.pause(2.0)
-    
-        player_answer = "" # The variblae to store what played typed.
-        correct_answer = piece_type + target_position_file + str(target_position_rank) # The correct answer.
-        corrected = False # True if the play answered correctly.
-        failure_time = 0 # How many times did the player fail?
-        failure_wronganswer = False # Ever the player replied a wrong answer(Type empty answer won't set this to True.)
+    extend " this, we record it as \"O-O\"."
+    m "For a long-castle like{nw}"
+    python:
+        game.queue_move("e8c8")
+        game.handle_monika_move()
+    extend " this, we record it as \"O-O-O\"."
 
-    while corrected == False:
-        $ player_answer = mas_input(
-            "How should we record this move?",
-            length=7,
-            screen_kwargs={"use_return_button": False}
-        )
-    
-        if player_answer != correct_answer:
-            $ failure_time += 1
-            if failure_time >= 5:
-                m 1hksdla "..."
-                m 1lksdla "Okay, [player], I guess you're not in the mood today."
-                m 1eksdla "That's alright! People have bad days after all."
-                m 1eub "For now, let us do something else to make you in a better mood, okay, [player]?"
-                $ corrected = True# Set corrected as True to break the while loop.
-            elif not player_answer:
-                # Player didn't answer anything at all.
-                m 1eksdla "Ehehe...{w=0.5} [player]."
-                m 1eka "You didn't even answer a single word."
-                m 1eub "Try again!"
-                show monika 1eua
-            else:
-                $ extra_word = "still " if failure_wronganswer else ""
-                $ failure_wronganswer = True
-                m 1euc "Oops.{w=0.3}{nw}"
-                extend 1eka" Sorry [player], but that's [extra_word]not the correct answer."
-                m 3ekb "Try again?"
-                show monika 1eua
-        else:
-            m 3hub "Yes, that's right!"
-            if failure_time == 0:
-                m 1huu "I know you can answer this without any failure~"
-                m 1nuu "You are a really smart student,{w=0.3}{nw}"
-                extend 1hub " ahaha!"
-                $ mas_gainAffection()
-            m 4hub "Now let us go to the next question!"
-            $ corrected = True
-        
-    show monika at t11
     $ game.hide()
+    show monika at t11
+    m 1hua "That's all we need to say."
+    m "Thanks for listening!"
     return
 
 init 5 python:
